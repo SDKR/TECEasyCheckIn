@@ -1,0 +1,11 @@
+﻿@page
+@using Web.Pages.Shared.Components
+@model Web.Pages.SettingsModel
+
+@{
+    ViewData["Title"] = "Indstillinger";
+}
+
+@(await Html.RenderComponentAsync<SettingsRC>(RenderMode.ServerPrerendered))
+
+<script src="_framework/blazor.server.js"></script>

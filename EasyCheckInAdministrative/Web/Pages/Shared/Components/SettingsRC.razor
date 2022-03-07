@@ -1,0 +1,279 @@
+﻿@using Microsoft.AspNetCore.Components.Web
+@using System.Globalization
+@using Core.Model
+@using Web.Services
+@using Web.Model.Enums
+@inject DailySettingsService DailySettingsService
+@inject DepartmentsService DepartmentsService
+@using Microsoft.JSInterop
+@inject IJSRuntime JSRuntime
+@inject AuthenticationStateProvider AuthenticationStateProvider
+@using Microsoft.AspNetCore.Components.Authorization
+
+
+<section class="container">
+    @if (CurrentResult == ResultStatus.Success)
+    {
+        <div class="bg-success text-center">
+            <h1>Indstillinger gemt</h1>
+            <button @onclick="() => CurrentResult = ResultStatus.None">Luk</button>
+        </div>
+    }
+    else if (CurrentResult == ResultStatus.Error)
+    {
+        <div class="bg-danger text-center">
+            <h1>Noget gik galt, prøv igen.</h1>
+            <p>Hvis problemet opstår igen, kontakt udvikler</p>
+            <button @onclick="() => CurrentResult = ResultStatus.None">Luk</button>
+        </div>
+    }
+</section>
+
+<section class="container">
+    <div class="row justify-content-center mt-3">
+        <h1 class="col-12 text-center">
+            Generelle indstillinger
+        </h1>
+        <p class="col-12 text-center">
+            Sætter en standard for <strong>Tjek ind</strong> og <strong>Tjek ud</strong> tidspunkter.
+            <br /> Hvis der ikke er sat tidspunkter på en specifik dag, bliver disse indstillinger brugt for dagen.
+        </p>
+        <button class="btn btn-primary align-self-center btn-sm" @onclick="UpdateDefaultDailySettings">
+            Gem hele ugen
+        </button>
+    </div>
+
+    <hr width="50%">
+
+    <div class="row">
+        @if (DefaultDailySettings != null)
+        {
+            foreach (var setting in DefaultDailySettings)
+            {
+                <div class="generalDaySettings m-auto">
+                    <h3 class="">@setting.Date.ToString("dddd", new CultureInfo("da-DK"))</h3>
+                    <hr class="m-0 mb-2 p-0">
+                    <label>Tjek ind</label>
+                    <input type="time" value="@setting.LastestCheckInTimeStamp.TimeOfDay"
+                           @onchange="(args) => setting.LastestCheckInTimeStamp = setting.Date + TimeSpan.Parse(args.Value.ToString())">
+                    <br>
+                    <label>Tjek ud</label>
+                    <input type="time" value="@setting.EarliestCheckOutTimeStamp.TimeOfDay"
+                           @onchange="(args) => setting.EarliestCheckOutTimeStamp = setting.Date + TimeSpan.Parse(args.Value.ToString())">
+                </div>
+            }
+        }
+    </div>
+</section>
+
+<div class="container">
+    <hr class="mt-5">
+</div>
+
+<section class="container pb-5">
+    <h1 class="text-center mt-4">Ugentlige indstillinger</h1>
+    <p class="text-center">
+        Overskriver generelle indstillinger for de valgte dage.
+        <br />Det er muligt at ændre tidspunkter for hele ugen eller individuelle dage.
+    </p>
+    <p class="text-center">For at gemme for en specifik dag, ændre tidspunktet og tryk <strong>Gem</strong> under dagen.</p>
+    <!-- DATE FILTERING -->
+    <div class="text-center">
+        <label class="datePickerLabel">Dato</label>
+        <input class="datePicker" @onchange="(e => WeekChanged((string)e.Value))" type="date" value="@DateTime.Today.ToString("yyyy-MM-dd")">
+    </div>
+
+
+    <!-- WEEK SETTINGS -->
+    <div class="row justify-content-center  mt-3">
+        <h2 class="selectedWeekTitle">Uge @CurrentWeek</h2>
+        <button class="btn btn-primary align-self-center btn-sm ml-2" @onclick="UpdateDailySettingsForWeek">
+            Gem hele ugen
+        </button>
+    </div>
+
+    <hr width="45%">
+
+    <div class="row">
+        @if (DailySettingsToShow != null)
+        {
+            foreach (var setting in DailySettingsToShow)
+            {
+                <div class="weekDaySettings m-auto">
+                    <h3 class="">@setting.Date.ToString("dddd", new CultureInfo("da-DK"))</h3>
+                    <h3 class="">@setting.Date.ToString("dd/MM")</h3>
+                    <hr class="m-0 mb-2 p-0">
+                    <label>Tjek ind</label>
+                    <input type="time" value="@setting.LastestCheckInTimeStamp.TimeOfDay"
+                           @onchange="(args) => setting.LastestCheckInTimeStamp = setting.Date + TimeSpan.Parse(args.Value.ToString())">
+                    <br>
+                    <label>Tjek ud</label>
+                    <input type="time" value="@setting.EarliestCheckOutTimeStamp.TimeOfDay"
+                           @onchange="(args) => setting.EarliestCheckOutTimeStamp = setting.Date + TimeSpan.Parse(args.Value.ToString())">
+                    <br>
+                    <button class="btn btn-primary btn-sm" @onclick="() => UpdateDailySettingsForDay(setting)">
+                        Gem
+                    </button>
+                </div>
+            }
+        }
+    </div>
+</section>
+
+@code {
+        /* DATE FILTERING */
+    public int CurrentWeek { get; set; }
+    public DateTime MondayOfWeek { get; set; }
+    public DateTime TuesdayOfWeek { get; set; }
+    public DateTime WednesdayOfWeek { get; set; }
+    public DateTime ThursdayOfWeek { get; set; }
+    public DateTime FridayOfWeek { get; set; }
+    public DateTime[] AllDaysOfWeek { get; set; }
+
+    /* DAILY SETTINGS LISTS AND PROPS */
+    // DEFAULT DAILYSETTINGS
+    public List<DailySettings> DefaultDailySettings { get; set; }
+    // DAILYSETTINGS FOR WEEK
+    public List<DailySettings> DailySettings { get; set; }
+    // DailySettings Lists to show for Week
+    public List<DailySettings> DailySettingsToShow { get; set; }
+
+    public Department CurrentDepartment { get; set; }
+
+    public ResultStatus CurrentResult { get; set; }
+
+
+    protected override async Task OnInitializedAsync()
+    {
+        var authState = await AuthenticationStateProvider.GetAuthenticationStateAsync();
+        if (authState.User.Identity.Name != null)
+        {
+            await SetDepartment();
+            await GetDefaultDailySettings();
+            await WeekChanged(DateTime.UtcNow.ToShortDateString());
+        }
+    }
+
+    private async Task SetDepartment()
+    {
+        var authState = await AuthenticationStateProvider.GetAuthenticationStateAsync();
+        var userDepartmentID = authState.User.Claims.FirstOrDefault(x => x.Type == "DepartmentID").Value;
+
+        CurrentDepartment = await DepartmentsService.GetDepartmentAsync(userDepartmentID);
+    }
+
+    private async Task WeekChanged(string date)
+    {
+        DateTime day = DateTime.Parse(date);
+        CurrentWeek = CultureInfo.InvariantCulture.Calendar.GetWeekOfYear(day, CalendarWeekRule.FirstFourDayWeek, DayOfWeek.Monday);
+        MondayOfWeek = ISOWeek.ToDateTime(day.Year, CurrentWeek, DayOfWeek.Monday);
+        TuesdayOfWeek = MondayOfWeek.AddDays(1);
+        WednesdayOfWeek = MondayOfWeek.AddDays(2);
+        ThursdayOfWeek = MondayOfWeek.AddDays(3);
+        FridayOfWeek = MondayOfWeek.AddDays(4);
+
+        AllDaysOfWeek = new DateTime[] { MondayOfWeek, TuesdayOfWeek, WednesdayOfWeek, ThursdayOfWeek, FridayOfWeek };
+        await GetDailySettingsForWeek(AllDaysOfWeek);
+        SetDailySettingsForWeek();
+    }
+
+    private async Task GetDefaultDailySettings()
+    {
+        DefaultDailySettings = await DailySettingsService.GetDefaultDailySettingsAsync(CurrentDepartment.Name);
+    }
+
+    private async Task GetDailySettingsForWeek(DateTime[] dates)
+    {
+        DailySettings = await DailySettingsService.GetDailySettingsForSelectedWeekAsync(CurrentDepartment.Name, dates);
+    }
+
+    private void SetDailySettingsForWeek()
+    {
+        DailySettingsToShow = new List<DailySettings>();
+        for (int i = 0; i < DefaultDailySettings.Count; i++)
+        {
+            for (int j = 0; j < DailySettings.Count; j++)
+            {
+                if (DailySettings.ElementAtOrDefault(j).Date.DayOfWeek == DefaultDailySettings[i].Date.DayOfWeek)
+                {
+                    DailySettingsToShow.Add(DailySettings[j]);
+                }
+            }
+            if (DailySettingsToShow.Count < i + 1)
+            {
+                DateTimeOffset checkIn = AllDaysOfWeek[i].Date;
+                TimeSpan checkInTime = DefaultDailySettings[i].LastestCheckInTimeStamp.TimeOfDay;
+                checkIn = checkIn.Date + checkInTime;
+                DateTimeOffset checkOut = AllDaysOfWeek[i].Date;
+                TimeSpan checkOutTime = DefaultDailySettings[i].EarliestCheckOutTimeStamp.TimeOfDay;
+                checkOut = checkOut.Date + checkOutTime;
+                var settingToAdd = new DailySettings()
+                {
+                    // set date on checkin/out time before setting the time of day?
+                    Date = AllDaysOfWeek[i].Date,
+                    LastestCheckInTimeStamp = checkIn,
+                    EarliestCheckOutTimeStamp = checkOut,
+                    DepartmentId = DefaultDailySettings[i].DepartmentId
+                };
+                DailySettingsToShow.Add(settingToAdd);
+            }
+        }
+    }
+
+    private async Task UpdateDefaultDailySettings()
+    {
+        bool confirmed = await JSRuntime.InvokeAsync<bool>("confirm", "Er du sikker på du vil gemme?");
+        if (confirmed)
+        {
+            var result = await DailySettingsService.UpdateDailySettingsForSelectedWeekAsync(DefaultDailySettings);
+            if (result != null)
+            {
+                DefaultDailySettings = result;
+                CurrentResult = ResultStatus.Success;
+            }
+            else
+            {
+                CurrentResult = ResultStatus.Error;
+            }
+        }
+    }
+
+    private async Task UpdateDailySettingsForWeek()
+    {
+        bool confirmed = await JSRuntime.InvokeAsync<bool>("confirm", "Er du sikker på du vil gemme?");
+        if (confirmed)
+        {
+            var result = await DailySettingsService.UpdateDailySettingsForSelectedWeekAsync(DailySettings);
+            if (result != null)
+            {
+                DailySettings = result;
+                CurrentResult = ResultStatus.Success;
+            }
+            else
+            {
+                CurrentResult = ResultStatus.Error;
+            }
+        }
+    }
+
+    private async Task UpdateDailySettingsForDay(DailySettings settings)
+    {
+        bool confirmed = await JSRuntime.InvokeAsync<bool>("confirm", "Er du sikker på du vil gemme?");
+        if (confirmed)
+        {
+            var result = await DailySettingsService.UpdateDailySettingsForSelectedDayAsync(settings);
+            if (result != null)
+            {
+                var index = DailySettings.IndexOf(settings);
+                if (index != -1)
+                    DailySettings[index] = result;
+                CurrentResult = ResultStatus.Success;
+            }
+            else
+            {
+                CurrentResult = ResultStatus.Error;
+            }
+        }
+    }
+
+}

@@ -1,0 +1,559 @@
+﻿@using Microsoft.AspNetCore.Components.Web
+@using System.IO
+@using BlazorInputFile
+@using ClosedXML.Excel
+@using Core.Model
+@using Web.Services
+@using Web.Model.Enums
+@using Microsoft.JSInterop
+@inject IJSRuntime JSRuntime
+@inject InstructorsService InstructorsService
+@inject DepartmentsService DepartmentsService
+@inject StudentsService StudentsService
+@inject AuthenticationStateProvider AuthenticationStateProvider
+@using Microsoft.AspNetCore.Components.Authorization
+
+
+<section class="container">
+    <div class="row my-3 px-3">
+        <div class="col-2 lg-2 p-0 align-self-center">
+            <button class="btn btn-primary modalBtn" @onclick="() => CurrentAction = ModalActions.Insert">
+                Indsæt elev
+            </button>
+        </div>
+
+        <div class="col-4 col-lg-2 p-0 align-self-center">
+            <label class="btn btn-primary" style="margin:0" for="file-selector">
+                Importer elever
+                <InputFile id="file-selector" class="d-none" accept="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" OnChange="HandleSelection" />
+            </label>
+        </div>
+        <div class="col-4 col-lg-2 p-0 align-self-center">
+            @if (StudentsFromFile != null)
+            {
+                <button class="btn btn-primary" @onclick="UploadStudents">
+                    Upload elever
+                </button>
+            }
+            else
+            {
+                <button class="btn btn-primary disabled">
+                    Upload elever
+                </button>
+            }
+        </div>
+
+        <div class="col-4 col-lg-2 p-0 align-self-center">
+            @if (StudentsFromFile != null)
+            {
+                <button class="btn btn-primary" @onclick="GetReplaceStudents">
+                    Erstat elever
+                </button>
+            }
+            else
+            {
+                <button class="btn btn-primary disabled">
+                    Erstat elever
+                </button>
+            }
+        </div>
+
+        <div class="col-4 col-lg-3 p-0 align-self-center filter-btn">
+            <button class="btn btn-primary filter-btn" data-toggle="dropdown"
+                    aria-expanded="false" aria-controls="instructorSelection">
+                Instruktør
+                @if (CurrentInstructor != null)
+                {
+                    <span class="filter-by">@CurrentInstructor.Initials</span>
+
+                }
+                <i class="fa fa-sort" aria-hidden="true"></i>
+            </button>
+
+            <div id="instructorSelection" class="dropdown-menu">
+                @if (Instructors != null)
+                {
+                    @foreach (Instructor ins in Instructors)
+                    {
+                        <label class="dropdown-item filter-item" @onclick="() => ChangeInstructor(ins)">
+                            @ins.Initials
+                        </label>
+                    }
+                }
+            </div>
+        </div>
+
+        <div class="col-4 col-lg-1 p-0 align-self-center">
+            <button class="btn btn-primary modalBtn" @onclick="() => CurrentAction = ModalActions.Help">
+                Hjælp
+            </button>
+        </div>
+    </div>
+</section>
+
+<!-- RESULT INFO SECTION -->
+<section class="container">
+
+    @switch (CurrentResult)
+    {
+        case ResultStatus.Success:
+            <div class="bg-success text-center">
+                <h1>Handling var succesfuld.</h1>
+                <button @onclick="() => CurrentResult = ResultStatus.None">Luk</button>
+                @if (StudentsCreated != null)
+                {
+                    <h3 class="mb-0">@StudentsCreated.Count elev(er) blev oprettet.</h3>
+                    @if (StudentsCreated.Count != 0)
+                    {
+                        <div class="row">
+                            @foreach (Student std in StudentsCreated)
+                            {
+                                <div class="text-left col-6">@std.FullName</div>
+                            }
+                        </div>
+                    }
+
+                }
+            </div>
+
+            if (StudentsExists.Count != 0)
+            {
+                <div class="bg-warning">
+                    <h3 class="text-center">@StudentsExists.Count elev(er) blev ikke oprettet, da de allerede findes i database.</h3>
+                    <div class="row">
+                        @foreach (Student std in StudentsExists)
+                        {
+                            <div class="col-6">@std.FullName</div>
+                        }
+                    </div>
+                </div>
+            }
+
+            if (StudentsDeleted != null)
+            {
+                <div class="bg-danger">
+                    <h3 class="text-center">@StudentsDeleted.Count elev(er) blev slettet.</h3>
+                    @if (StudentsDeleted.Count != 0)
+                    {
+                        <div class="row">
+                            @foreach (Student std in StudentsDeleted)
+                            {
+                                <div class="col-6">@std.FullName</div>
+                            }
+                        </div>
+                    }
+                </div>
+            }
+            break;
+
+
+        case ResultStatus.Error:
+            <div class="bg-danger text-center">
+                <h1>Noget gik galt, prøv igen.</h1>
+                <p>Hvis problemet opstår igen, kontakt udvikler</p>
+                <button @onclick="() => CurrentResult = ResultStatus.None">Luk</button>
+            </div>
+            break;
+
+
+        case ResultStatus.Confirm:
+            <div class="bg-danger text-center">
+                <h1>Er du sikker på du vil gennemføre denne handling?</h1>
+                <button @onclick="ReplaceStudents">Ja</button>
+                <button @onclick="() => CurrentResult = ResultStatus.None">Nej</button>
+                @if (StudentsCreated != null)
+                {
+                    <h3 class="bg-success mb-0">@StudentsCreated.Count elev(er) vil blive oprettet.</h3>
+                    @if (StudentsCreated.Count != 0)
+                    {
+                        <div class="row bg-success">
+                            @foreach (Student std in StudentsCreated)
+                            {
+                                <div class="text-left col-6">@std.FullName</div>
+                            }
+                        </div>
+                    }
+
+                }
+            </div>
+
+            if (StudentsExists != null && StudentsExists.Count != 0)
+            {
+                <div class="bg-warning">
+                    <h3 class="text-center">@StudentsExists.Count elev(er) vil ikke oprettes, da de allerede findes i database.</h3>
+                    <div class="row">
+                        @foreach (Student std in StudentsExists)
+                        {
+                            <div class="col-6">@std.FullName</div>
+                        }
+                    </div>
+                </div>
+            }
+
+            if (StudentsDeleted != null)
+            {
+                <div class="bg-danger">
+                    <h3 class="text-center">@StudentsDeleted.Count elev(er) vil blive slettet.</h3>
+                    @if (StudentsDeleted.Count != 0)
+                    {
+                        <div class="row">
+                            @foreach (Student std in StudentsDeleted)
+                            {
+                                <div class="col-6">@std.FullName</div>
+                            }
+                        </div>
+                    }
+                </div>
+            }
+            break;
+
+    }
+
+</section>
+
+<section class="container">
+    @if (StudentsFromFile != null)
+    {
+        <div>
+            <!-- ELEV FUNDET -->
+            <h2 class="text-center">
+                <span>Elever fundet: </span>
+                <span id="studsFound"><i class="fa fa-user" aria-hidden="true"></i> @StudentsFromFile.Count</span>
+            </h2>
+        </div>
+    }
+    <div class="row">
+        <table id="studentTable" class="table bg-light">
+            <thead class="thead-dark">
+                <tr>
+                    <th scope="col">Fornavn</th>
+                    <th scope="col">Efternavn</th>
+                    <th scope="col">Afdeling</th>
+                    <th scope="col">Instruktør</th>
+                </tr>
+            </thead>
+            <tbody>
+                @if (StudentsFromFile != null)
+                {
+                    foreach (Student std in StudentsFromFile)
+                    {
+                        <tr>
+                            <td><input style="width:125px" @onchange="e => std.FirstName = e.Value.ToString().Trim()" value="@std.FirstName" /></td>
+                            <td><input style="width:280px" @onchange="e => std.LastName = e.Value.ToString().Trim()" value="@std.LastName" /></td>
+                            <td>@CurrentDepartment.Name</td>
+                            <td>@CurrentInstructor.Initials</td>
+                        </tr>
+                    }
+                }
+            </tbody>
+        </table>
+    </div>
+</section>
+
+<div id="modal" class="modal text-center">
+    <form class="modal-content">
+        <div class="container">
+            @switch (CurrentAction)
+            {
+                case ModalActions.Insert:
+                    <h1>Indsæt elev</h1>
+
+                    <div class="form-group">
+                        <label for="firstNameInput">Fornavn</label>
+                        <input type="text" class="form-control" id="firstNameInput" @bind="StudentFirstName">
+                    </div>
+                    <div class="form-group">
+                        <label for="lastNameInput">Efternavn</label>
+                        <input type="text" class="form-control" id="lastNameInput" @bind="StudentLastName">
+                    </div>
+
+                    <div class="form-group">
+                        <label for="instructorInput">Instuktør</label>
+                        <select name="studentInstructor" @onchange="(args) => StudentInstructorId = Guid.Parse(args.Value.ToString())">
+                            @if (StudentInstructorId == Guid.Empty) StudentInstructorId = Instructors[0].Id;
+                            @foreach (Instructor ins in Instructors)
+                            {
+                                <option value="@ins.Id">@ins.Initials</option>
+                            }
+                        </select>
+                    </div>
+
+                    <div class="pt-4 clearfix">
+                        <button type="button" class="btn btn-sm btn-primary"
+                                @onclick="() => InsertStudent()">
+                            Gem
+                        </button>
+                        <button type="button" class="btn btn-sm btn-secondary"
+                                @onclick="HideModal">
+                            Annuller
+                        </button>
+                    </div>
+                    break;
+                case ModalActions.Help:
+                    <h1>Hjælp</h1>
+
+                    <h5>Generelt</h5>
+                    <p style="font-size:13px">
+                        Elever tilknyttes en instruktør eller administrator ved oprettelse. Er en instruktør endnu ikke valgt, kan eleven tilknyttes "Ingen".
+                    </p>
+
+                    <h5>Indsæt Elev</h5>
+                    <p style="font-size:13px">
+                        Det er muligt, at indsætte en enkelt elev ved brug af "indsæt elev" knappen. Skal flere elever oprettes bør man bruge "importer elever",
+                    </p>
+
+                    <h5>Importer Elever</h5>
+                    <p style="font-size:13px">
+                        Her er der mulighed for at importere et excel ark med elevernes fornavn i første søjle, og efternavne i anden søjle.
+                    </p>
+
+                    <p style="font-size:13px">
+                        Når disse funktioner bruges, bliver en elev indsat under den valgte instruktør, i dropdown menuen "Instruktør".
+                        Det er her vigtigt, at det er elevens fulde navn som også fremkommer på sygesikringkortet, da systemet ellers ikke kan finde personen. 
+                    </p>
+
+                    <button type="button" class="btn btn-sm btn-secondary"
+                            @onclick="HideModal">
+                        Annuller
+                    </button>
+                    break;
+            }
+        </div>
+    </form>
+</div>
+
+<div class="toTopDiv text-center">
+    <button onclick="toTop()" type="button" class="btn btn-outline-primary">
+        <i class="fa fa-arrow-up fa-lg" aria-hidden="true"></i>
+    </button>
+    <p class="text-primary">Gå til top</p>
+</div>
+
+@code {
+
+        // students fetched from excel file
+    public List<Student> StudentsFromFile { get; set; }
+
+    // students returned from database
+    public List<Student> StudentsCreated { get; set; }
+    public List<Student> StudentsExists { get; set; }
+    public List<Student> StudentsDeleted { get; set; }
+    public List<Instructor> Instructors { get; set; }
+
+    public Department CurrentDepartment { get; set; }
+    public Instructor CurrentInstructor { get; set; }
+
+    public Student StudentToInsert { get; set; }
+
+    public string StudentFirstName { get; set; }
+    public string StudentLastName { get; set; }
+    public Guid StudentInstructorId { get; set; }
+
+
+    // Used to decide result message
+    public ResultStatus CurrentResult { get; set; }
+    // Used to decide what the modal should show
+    public ModalActions CurrentAction { get; set; }
+
+
+
+
+    protected override async Task OnInitializedAsync()
+    {
+        var authState = await AuthenticationStateProvider.GetAuthenticationStateAsync();
+        if (authState.User.Identity.Name != null)
+        {
+            await SetDepartment();
+            await GetInstructors();
+            CurrentInstructor = Instructors[0];
+        }
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!firstRender)
+        {
+            await JSRuntime.InvokeVoidAsync("loadModal");
+        }
+    }
+
+
+    private async Task SetDepartment()
+    {
+        var authState = await AuthenticationStateProvider.GetAuthenticationStateAsync();
+        var userDepartmentID = authState.User.Claims.FirstOrDefault(x => x.Type == "DepartmentID").Value;
+
+        CurrentDepartment = await DepartmentsService.GetDepartmentAsync(userDepartmentID);
+    }
+
+    private async Task GetInstructors()
+    {
+        Instructors = await InstructorsService.GetAllInstructorsByDepartmentAsync(CurrentDepartment.Name);
+    }
+
+    private void ChangeInstructor(Instructor instructor)
+    {
+        CurrentInstructor = instructor;
+        if (StudentsFromFile != null)
+        {
+            Changes();
+        }
+    }
+
+    private void Changes()
+    {
+        foreach (Student std in StudentsFromFile)
+        {
+            std.InstructorId = CurrentInstructor.Id;
+        }
+    }
+
+
+    private async void UploadStudents()
+    {
+        var result = await StudentsService.CreateStudents(StudentsFromFile);
+        if (result != null)
+        {
+            StudentsFromFile = null;
+            StudentsDeleted = null;
+            StudentsCreated = result[0].OrderBy(s => s.FullName).ToList();
+            StudentsExists = result[1].OrderBy(s => s.FullName).ToList();
+            CurrentResult = ResultStatus.Success;
+        }
+        else
+        {
+            CurrentResult = ResultStatus.Error;
+        }
+
+        this.StateHasChanged();
+    }
+
+    private async void ReplaceStudents()
+    {
+        var result = await StudentsService.ReplaceStudents(StudentsFromFile);
+        if (result != null)
+        {
+            StudentsFromFile = null;
+            StudentsCreated = result[0].OrderBy(s => s.FullName).ToList();
+            StudentsExists = result[1].OrderBy(s => s.FullName).ToList();
+            StudentsDeleted = result[2].OrderBy(s => s.FullName).ToList();
+            CurrentResult = ResultStatus.Success;
+        }
+        else
+        {
+            CurrentResult = ResultStatus.Error;
+        }
+
+        this.StateHasChanged();
+    }
+
+    private async void GetReplaceStudents()
+    {
+        var result = await StudentsService.GetReplaceStudentsChanges(StudentsFromFile);
+        if (result != null)
+        {
+            // Find way to disable table while on confirmation
+            StudentsCreated = result[0].OrderBy(s => s.FullName).ToList();
+            StudentsExists = result[1].OrderBy(s => s.FullName).ToList();
+            StudentsDeleted = result[2].OrderBy(s => s.FullName).ToList();
+            CurrentResult = ResultStatus.Confirm;
+        }
+        else
+        {
+            CurrentResult = ResultStatus.Error;
+        }
+
+        this.StateHasChanged();
+    }
+
+
+    private async void InsertStudent()
+    {
+        await HideModal();
+        Student studentToAdd = new Student()
+        {
+            FirstName = StudentFirstName,
+            LastName = StudentLastName,
+            InstructorId = StudentInstructorId,
+            DepartmentId = CurrentDepartment.Id
+        };
+
+        List<Student> studentsToAdd = new List<Student>();
+        studentsToAdd.Add(studentToAdd);
+
+        var result = await StudentsService.CreateStudents(studentsToAdd);
+        if (result != null)
+        {
+            StudentsFromFile = null;
+            StudentsDeleted = null;
+            StudentsCreated = result[0].OrderBy(s => s.FullName).ToList();
+            StudentsExists = result[1].OrderBy(s => s.FullName).ToList();
+            CurrentResult = ResultStatus.Success;
+        }
+        else
+        {
+            CurrentResult = ResultStatus.Error;
+        }
+
+        this.StateHasChanged();
+    }
+
+    private async Task HideModal()
+    {
+        await JSRuntime.InvokeVoidAsync("hideModal");
+    }
+
+
+    async Task HandleSelection(IFileListEntry[] files)
+    {
+        var file = files.FirstOrDefault();
+        if (file != null && file.Type == "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+        {
+            // Load into .NET memory
+            var ms = new MemoryStream();
+            await file.Data.CopyToAsync(ms);
+
+            ImportStudents(ms);
+        }
+    }
+
+
+    private void ImportStudents(MemoryStream ms)
+    {
+        // reset from last run
+        StudentsCreated = null;
+        StudentsDeleted = null;
+        StudentsExists = null;
+
+        // reset list by initializing new
+        StudentsFromFile = new List<Student>();
+        using (XLWorkbook workbook = new XLWorkbook(ms))
+        {
+            IXLWorksheet worksheet = workbook.Worksheet(1);
+            // finds all rows with data, and skips first row
+            var rows = worksheet.RangeUsed().RowsUsed().Skip(1);
+
+            foreach (var row in rows)
+            {
+                string name = row.FirstCellUsed().Value.ToString().Trim();
+                // used to remove '- EUV2' from students
+                if (name.Contains(" -"))
+                {
+                    name = name.Substring(0, name.IndexOf(" -"));
+                }
+                string firstName = name.Substring(0, name.IndexOf(" "));
+                string lastName = name.Substring(name.IndexOf(" ")).Trim();
+
+
+                StudentsFromFile.Add(new Student
+                {
+                    FirstName = firstName,
+                    LastName = lastName,
+                    DepartmentId = CurrentDepartment.Id,
+                    InstructorId = CurrentInstructor.Id
+                });
+            }
+            StudentsFromFile = StudentsFromFile.OrderBy(s => s.FirstName).ToList();
+        }
+    }
+}

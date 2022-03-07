@@ -1,0 +1,94 @@
+/* used for fixed-top navbar */
+body {
+    /* padding-top: 4rem; */
+    background-color: #f5f5f5;
+}
+
+h1 {
+    font-weight: 400;
+}
+
+h2 {
+    font-weight: 200;
+}
+
+h3 {
+    font-weight: 200;
+}
+
+input[type=date] {
+    width: 100%;
+}
+
+div.collapsing .nav-link, div.collapse.show .nav-link {
+    background-color: #007bff;
+    border: 2px solid rgba(0, 0, 0, 0.2);
+    transition: 0.01s linear;
+    text-align: center;
+    font-size: 1.2rem;
+}
+
+#mainNavbar {
+    height: 4rem;
+    z-index: 9999;
+}
+
+#mainNavbar .navbar-brand {
+    font-weight: 200;
+    font-size: 1.5rem;
+}
+
+#mainNavbar .nav-link {
+    color: white;
+    height: 4rem;
+    line-height: 3rem;
+}
+
+    #mainNavbar .nav-link:hover {
+        background-color: white;
+        color: #007bff;
+    }
+
+#mainNavbar div.nav-item .nav-link:hover {
+    background-color: red;
+    color: white;
+}
+
+
+#studsFound {
+    font-weight: 400;
+}
+
+
+.btn:focus {
+    box-shadow: none;
+    outline: none;
+}
+
+.filter-btn {
+    font-weight: 700;
+    width: 90%;
+}
+
+    .filter-btn .filter-by {
+        font-weight: 300;
+    }
+
+.btnWeekFiltering {
+    width: 100%;
+    margin: 2px 0;
+}
+
+.datePickerLabel {
+    font-size: 1.5rem;
+    font-weight: 400;
+}
+
+input[type=date].datePicker {
+    width: auto;
+}
+
+.weekDaySettings h3, .generalDaySettings h3 {
+    font-weight: 400;
+    margin-bottom: 2px;
+}

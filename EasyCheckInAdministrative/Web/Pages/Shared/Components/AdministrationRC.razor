@@ -1,0 +1,605 @@
+﻿@using Microsoft.AspNetCore.Components.Web
+@using System.IO
+@using BlazorInputFile
+@using ClosedXML.Excel
+@using Core.Model
+@using Web.Services
+@using Web.Model.Enums
+@using Microsoft.JSInterop
+@inject IJSRuntime JSRuntime
+@inject InstructorsService InstructorsService
+@inject DepartmentsService DepartmentsService
+@inject AuthenticationStateProvider AuthenticationStateProvider
+@using Microsoft.AspNetCore.Components.Authorization
+
+
+<section class="container">
+    <div class="row my-3 px-3">
+        <div class="col-2 p-0 align-self-center">
+            <button class="btn btn-primary modalBtn" @onclick="() => CurrentAction = ModalActions.Create">
+                Opret Ny Afdeling
+            </button>
+        </div>
+
+        <div class="col-2 p-0 align-self-center">
+            <button class="btn btn-primary modalBtn" @onclick="() => CurrentAction = ModalActions.Insert" disabled="@InsertInstructorIsDisabled">
+                Opret Ny Instruktør
+            </button>
+        </div>
+
+        <div class="col-2 p-0 align-self-center">
+            <button class="btn btn-primary modalBtn" @onclick="() => CurrentAction = ModalActions.Edit" disabled="@InsertInstructorIsDisabled">
+                Skift Afdelingsnavn
+            </button>
+        </div>
+
+        <div class="col-2 p-0 align-self-center">
+            <button class="btn btn-primary modalBtn" @onclick="() => CurrentAction = ModalActions.Remove" disabled="@InsertInstructorIsDisabled">
+                Slet Afdeling
+            </button>
+        </div>
+
+        <div class="col-4 col-lg-2 p-0 align-self-center">
+            <button class="btn btn-primary filter-btn" data-toggle="dropdown"
+                    aria-expanded="false" aria-controls="instructorSelection">
+                Afdeling
+                @if (CurrentDepartmentName != null)
+                {
+                    <span class="filter-by">@CurrentDepartmentName.Name</span>
+
+                }
+                <i class="fa fa-sort" aria-hidden="true"></i>
+            </button>
+
+            <div id="instructorSelection" class="dropdown-menu">
+                @if (DepartmentList != null)
+                {
+                    @foreach (Department dep in DepartmentList)
+                    {
+                        <label class="dropdown-item filter-item" @onclick="() => ChangeDepartment(dep)">
+                            @dep.Name
+                        </label>
+                    }
+                }
+            </div>
+        </div>
+
+        <div class="col-2 p-0 align-self-center">
+            <button class="btn btn-primary modalBtn" @onclick="() => CurrentAction = ModalActions.Help">
+                Hjælp
+            </button>
+        </div>
+
+    </div>
+</section>
+
+<section class="container">
+    <div class="row">
+        <table id="studentTable" class="table bg-light">
+            <thead class="thead-dark">
+                <tr>
+                    <th scope="col">Initialer</th>
+                    <th scope="col">Rolle</th>
+                    <th scope="col">Slet</th>
+                    <th scope="col">Rediger</th>
+                </tr>
+            </thead>
+            <tbody>
+                @if (ShownInstructorList != null)
+                    {
+                        foreach (Instructor ins in ShownInstructorList)
+                        {
+                            <tr>
+                                <td><p style="width:125px" @onchange="e => ins.Initials = e.Value.ToString().Trim()">@ins.Initials </p></td>
+                                <td><p style="width:125px" @onchange="e => ins.Role = e.Value.ToString().Trim()">@ins.Role</p></td>
+                                <td><button class="btn btn-sm btn-danger modalBtn" @onclick="() => { SelectedInstructor = ins; CurrentAction = ModalActions.Delete; }">Slet</button></td>
+                                <td><button class="btn btn-sm btn-primary modalBtn" @onclick="() => { SelectedInstructor = ins; InputUpdateInitials = SelectedInstructor.Initials; SetRoleCorret(SelectedInstructor.Role) ; CurrentAction = ModalActions.Update; }">Rediger</button></td>
+                            </tr>
+                        }
+                    }
+            </tbody>
+        </table>
+    </div>
+</section>
+
+<div id="modal" class="modal text-center">
+    <form class="modal-content">
+        <div class="container">
+            @switch (CurrentAction)
+            {
+                case ModalActions.Create:
+                    <h1>Opret Afdeling</h1>
+
+                    <p>Her oprettes en ny afdeling </p>
+
+                    <div class="form-group">
+                        <label for="DepartmentInput">Afdelings Navn</label>
+                        <input type="text" class="form-control" id="DepartmentInputCreate" @bind="DepartmentName">
+                    </div>
+
+                    <div><p>@ErrorCreateDepartmentMessagetype</p></div>
+
+                    <div class="pt-4 clearfix">
+                        <button type="button" class="btn btn-sm btn-primary"
+                                @onclick="() => CreateDepartment()">
+                            Gem
+                        </button>
+                        <button type="button" class="btn btn-sm btn-secondary"
+                                @onclick="HideModal">
+                            Annuller
+                        </button>
+                    </div>
+                    break;
+
+                case ModalActions.Edit:
+                    <h1>Skift Afdelingsnavn</h1>
+
+                    <p>Her ændres navnet på afdelingen: @CurrentDepartmentName.Name </p>
+
+                    <div class="form-group">
+                        <label for="DepartmentInput">Afdelings Navn</label>
+                        <input type="text" class="form-control" id="DepartmentInputCreate" @bind="DepartmentName">
+                    </div>
+
+                    <div><p>@ErrorCreateDepartmentMessagetype</p></div>
+
+                    <div class="pt-4 clearfix">
+                        <button type="button" class="btn btn-sm btn-primary"
+                                @onclick="() => EditDepartment()">
+                            Gem
+                        </button>
+                        <button type="button" class="btn btn-sm btn-secondary"
+                                @onclick="HideModal">
+                            Annuller
+                        </button>
+                    </div>
+                    break;
+
+                case ModalActions.Remove:
+
+                    <h1 class="text-danger">Fjern Afdeling fra system</h1>
+                    <p>
+                        Er du sikker på du vil fjerne Afdelingen <strong>@CurrentDepartmentName.Name</strong> fra system? <br />
+                        Alle oplysninger omkring Afdelingen, vil blive fjernet <strong>HELT</strong> fra system.<br />
+                        <span class="text-danger"><strong>Denne handling kan ikke fortrydes!</strong></span>
+                    </p>
+
+                    <div class="clearfix">
+                        <button type="button" class="btn btn-sm btn-danger"
+                                @onclick="() => RemoveDepartment(CurrentDepartmentName)">
+                            Slet
+                        </button>
+                        <button type="button" class="btn btn-sm btn-secondary"
+                                @onclick="HideModal">
+                            Annuller
+                        </button>
+                    </div>
+                    break;
+
+                case ModalActions.Delete:
+
+                    <h1 class="text-danger">Fjern Instruktør fra system</h1>
+                    <p>
+                        Er du sikker på du vil fjerne Instruktøren <strong>@SelectedInstructor?.Initials</strong> fra system? <br />
+                        Alle oplysninger omkring Instruktøren, vil blive fjernet <strong>HELT</strong> fra system.<br />
+                        <span class="text-danger"><strong>Denne handling kan ikke fortrydes!</strong></span>
+                    </p>
+
+                    <div class="clearfix">
+                        <button type="button" class="btn btn-sm btn-danger"
+                                @onclick="() => DeleteInstructor(SelectedInstructor)">
+                            Slet
+                        </button>
+                        <button type="button" class="btn btn-sm btn-secondary"
+                                @onclick="HideModal">
+                            Annuller
+                        </button>
+                    </div>
+                    break;
+
+                case ModalActions.Update:
+                    <h1>Updater Instruktør</h1>
+
+                    <p>To instruktører må ikke have samme Initialer</p>
+
+                    <div class="form-group">
+                        <label for="InitialsInputUpdate">Initialer</label>
+                        <input type="text" class="form-control" name="InitialsInputUpdate" id="InitialsInputUpdate" value="@SelectedInstructor?.Initials" @onload="@(() => { InputUpdateInitials = SelectedInstructor?.Initials; })" @oninput="@((e) => { InputUpdateInitials=(string)e.Value;})">
+                    </div>
+
+                    <div class="form-group">
+                        <label for="InstructorInputUpdate">Instruktør Rolle</label>
+                        <select id="InstructorInputUpdate" name="Instructor" value="@SelectedInstructor?.Role" @onchange="@OnSelect">
+                            @foreach (var temp in templates)
+                            {
+                                <option value="@temp">@temp</option>
+                            }
+                        </select>
+                    </div>
+
+                    <div class="pt-4 clearfix">
+                        <button type="button" class="btn btn-sm btn-primary"
+                                @onclick="() => UpdateInstructor(SelectedInstructor)">
+                            Gem
+                        </button>
+                    </div>
+                    <p>@ErrorInputMessagetype</p>
+
+
+                    <div class="form-group">
+                        <label for="PasswordInput">Nyt Password</label>
+                        <input type="password" class="form-control" id="PasswordInputUpdate" @bind="InputUpdatePassword">
+                    </div>
+
+                    <div class="form-group">
+                        <label for="PasswordInput">Gentag nyt Password</label>
+                        <input type="password" class="form-control" id="PasswordInputConfirmeUpdate" @bind="InputUpdatePasswordConfirm">
+                    </div>
+
+
+                    <div class="pt-4 clearfix">
+                        <button type="button" class="btn btn-sm btn-primary"
+                                @onclick="() => UpdateInstructorPassword(SelectedInstructor)">
+                            Gem Password
+                        </button>
+                        <button type="button" class="btn btn-sm btn-secondary"
+                                @onclick="HideModal">
+                            Annuller
+                        </button>
+                    </div>
+
+                    <p>@ErrorInputMessagePassword</p>
+                    break;
+                case ModalActions.Insert:
+                    <h1>Indsæt Instruktør</h1>
+
+                    <p>To instruktører må ikke have samme Initialer</p>
+
+                    <div class="form-group">
+                        <label for="InitialsInput">Initialer</label>
+                        <input type="text" class="form-control" id="InitialsInputCreate" @bind="InstructorInitials">
+                    </div>
+                    <div class="form-group">
+                        <label for="PasswordInput">Password</label>
+                        <input type="password" class="form-control" id="PasswordInputCreate" @bind="InstructorPassword">
+                    </div>
+
+                    <div class="form-group">
+                        <label for="instructorRoleInput">Instruktør</label>
+                        <select id="instructorRoleInputCreate" name="Instructor" @onchange="@OnSelect">
+                            @foreach (var temp in templates)
+                            {
+                                <option value="@temp">@temp</option>
+                            }
+                        </select>
+                    </div>
+
+                    <div><p>@ErrorInputMessageInsert</p></div>
+
+                    <div class="pt-4 clearfix">
+                        <button type="button" class="btn btn-sm btn-primary"
+                                @onclick="() => InsertInstructor()">
+                            Gem
+                        </button>
+                        <button type="button" class="btn btn-sm btn-secondary"
+                                @onclick="HideModal">
+                            Annuller
+                        </button>
+                    </div>
+                    break;
+                case ModalActions.Help:
+                    <h1>Hjælp</h1>
+                    <h5>Generelt</h5>
+                    <p style="font-size:13px">
+                        Dette er Systemadministratormenuen. Her kan afdelinger og instruktører oprettes og slettes. Det er vigtigt at brugeren af denne menu forstår, at alle ændringer ved brug af slet knappen er endelige og ikke kan omgøres.
+                    </p>
+
+                    <h5>Opret Afdeling</h5>
+                    <p style="font-size:13px">
+                        Denne menu opretter en ny afdeling i check in systemet. Afdelingen bliver automatisk oprettet med en "Ingen" instruktør, som ikke må slettes eller ændres.
+                        <br />Når afdelingen er oprettet, kan den vælges i drop down menuen til højre.
+                    </p>
+
+                    <h5>Opret Instruktør</h5>
+                    <p style="font-size:13px">Menuen opretter en ny instruktør eller administrator på den valgte afdeling.<br /> Der skal altså vælges en afdeling før knappen virker.</p>
+
+                    <h5>Skift Afdelingsnavn</h5>
+                    <p style="font-size:13px">I denne menu kan navnet på en afdeling ændres.<br /> Der skal altså vælges en afdeling før knappen virker.</p>
+
+                    <h5>Slet Afdeling</h5>
+                    <p style="font-size:13px">Denne knap sletter den valgte afdeling. <strong>Funktionen fjerner alle tilhørende elever og Instruktører. Dette kan ikke omgøres, sletning af en afdeling er permanent!</strong></p>
+
+                    <h5>Instruktør Listen</h5>
+                    <p style="font-size:13px">
+                        I tabellen er det muligt, at slette og redigere alle instruktører og administratorer i systemet.
+                        Instruktør initialer er unikke, og to instruktører må derfor ikke have samme initialer.
+                        <br />Ligeledes må brugeren "Ingen" aldrig fjernes af Systemadministratoren, da systemet herefter ikke vil fungere korrekt.
+                    </p>
+
+                    <button type="button" class="btn btn-sm btn-secondary"
+                            @onclick="HideModal">
+                        Annuller
+                    </button>
+                    break;
+            }
+        </div>
+    </form>
+</div>
+
+@code {
+    // Used to decide result message
+    public ResultStatus CurrentResult { get; set; }
+    // Used to decide what the modal should show
+    public ModalActions CurrentAction { get; set; }
+
+    public string DepartmentName { get; set; }
+    public Department CurrentDepartmentName { get; set; }
+    public List<Department> DepartmentList { get; set; }
+    public List<Instructor> InstructorList { get; set; }
+    public List<Instructor> ShownInstructorList { get; set; }
+
+    // Update
+    public Instructor SelectedInstructor { get; set; }
+    private string InputUpdateInitials { get; set; }
+    List<string> templates = Enum.GetValues(typeof(Core.Model.Enums.UserType)).Cast<Core.Model.Enums.UserType>().Select(v => v.ToString()).ToList();
+    string selectedString = "Instructor";
+    private string InputUpdatePassword { get; set; }
+    private string InputUpdatePasswordConfirm { get; set; }
+    private string ErrorInputMessagetype { get; set; }
+    private string ErrorInputMessagePassword { get; set; }
+
+    //Insert Instructor
+    private string InstructorInitials { get; set; }
+    private string InstructorPassword { get; set; }
+    private string ErrorInputMessageInsert { get; set; }
+    private bool InsertInstructorIsDisabled { get; set; } = true;
+    private string ErrorCreateDepartmentMessagetype { get; set; }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!firstRender)
+        {
+            await JSRuntime.InvokeVoidAsync("loadModal");
+        }
+        //this.StateHasChanged();
+    }
+
+    protected override async Task OnInitializedAsync()
+    {
+        await GetDepartments();
+        await GetInstructors();
+    }
+
+    private async Task GetDepartments()
+    {
+        DepartmentList = await DepartmentsService.GetAllDepartmentsAsync();
+    }
+
+    private async Task GetInstructors()
+    {
+        InstructorList = await InstructorsService.GetAllInstructors();
+    }
+
+    private void FilterChanged()
+    {
+
+        if(CurrentDepartmentName != null)
+        {
+            ShownInstructorList = InstructorList.Where(s => s.DepartmentId == CurrentDepartmentName.Id).OrderBy(s => s.Role).ToList();
+        }
+    }
+
+    private async Task ChangeDepartment(Department department)
+    {
+        CurrentDepartmentName = department;
+        await GetInstructors();
+        InsertInstructorIsDisabled = false;
+        FilterChanged();
+    }
+
+    private async Task DeleteInstructor(Instructor instructor)
+    {
+        await HideModal();
+        var result = await InstructorsService.DeleteInstructor(instructor);
+        if (result != null)
+        {
+            InstructorList.Remove(instructor);
+            CurrentResult = ResultStatus.Success;
+        }
+        else
+        {
+            CurrentResult = ResultStatus.Error;
+        }
+        this.StateHasChanged();
+        FilterChanged();
+    }
+
+    private async Task UpdateInstructor(Instructor instructor)
+    {
+        Instructor instructor1 = new Instructor();
+        instructor1.Initials = instructor.Initials;
+
+
+        instructor.Initials = InputUpdateInitials;
+        instructor.Role = selectedString;
+        var result = await InstructorsService.UpdateInstructor(instructor);
+        if (result.Initials != null)
+        {
+            var index = InstructorList.IndexOf(instructor);
+            if (index != -1)
+                InstructorList[index] = result;
+            CurrentResult = ResultStatus.Success;
+            await HideModal();
+        }
+        else if (result.Initials == null)
+        {
+            ErrorInputMessagetype = "En Bruger med dette navn findes allrede";
+            instructor.Initials = instructor1.Initials;
+        }
+        else
+        {
+            ErrorInputMessagetype = "Ukendt fejl";
+            CurrentResult = ResultStatus.Error;
+            instructor.Initials = instructor1.Initials;
+        }
+        await HideModal();
+        //InputUpdateInitials = null;
+    }
+
+    private async Task UpdateInstructorPassword(Instructor instructor)
+    {
+        if (InputUpdatePasswordConfirm == InputUpdatePassword && InputUpdatePassword != "" && InputUpdatePassword != null)
+        {
+            instructor.Password = InputUpdatePassword;
+            var result = await InstructorsService.UpdateInstructor(instructor);
+            if (result != null)
+            {
+                var index = InstructorList.IndexOf(instructor);
+                if (index != -1)
+                    InstructorList[index] = result;
+                CurrentResult = ResultStatus.Success;
+                await HideModal();
+            }
+            else
+            {
+                CurrentResult = ResultStatus.Error;
+            }
+        }
+        else
+        {
+            ErrorInputMessagePassword = "Passwords var ikke ens eller ikke udfyldt";
+            InputUpdatePasswordConfirm = "";
+            InputUpdatePassword = "";
+        }
+    }
+
+    private async void InsertInstructor()
+    {
+        if (InstructorInitials != "" && InstructorInitials != null && InstructorPassword != "" && InstructorPassword != null && CurrentDepartmentName != null)
+        {
+            Instructor InstructorToAdd = new Instructor()
+            {
+                Initials = InstructorInitials,
+                Password = InstructorPassword,
+                DepartmentId = CurrentDepartmentName.Id,
+                Role = selectedString
+            };
+
+            List<Instructor> InstructorAdd = new List<Instructor>();
+            InstructorAdd.Add(InstructorToAdd);
+
+            var result = await InstructorsService.CreateInstructor(InstructorAdd);
+            if (result.Count == 0)
+            {
+                ErrorInputMessageInsert = "Denne bruger findes allerde";
+                this.StateHasChanged();
+            }
+            else
+            {
+                await HideModal();
+                await GetInstructors();
+                FilterChanged();
+                this.StateHasChanged();
+            }
+        }
+        else
+        {
+            ErrorInputMessageInsert = "Initials eller Password er ikke udfyldt";
+        }
+
+    }
+
+    void OnSelect(ChangeEventArgs e)
+    {
+        selectedString = e.Value.ToString();
+    }
+
+    void SetRoleCorret(String role)
+    {
+        selectedString = role;
+    }
+
+
+    private async Task CreateDepartment()
+    {
+        Department department = new Department();
+        department.Name = DepartmentName;
+
+        var result = await DepartmentsService.CreateDepartment(department);
+
+        if(result.Name != null)
+        {
+            this.StateHasChanged();
+            await HideModal();
+            await GetDepartments();
+        }
+        else if(result.Name == null)
+        {
+            ErrorCreateDepartmentMessagetype = "En afdeling med dette navn findes allrede";
+        }
+        else
+        {
+            ErrorCreateDepartmentMessagetype = "Ukendt fejl";
+            CurrentResult = ResultStatus.Error;
+        }
+    }
+
+    private async Task EditDepartment()
+    {
+        Department editDepartment = new Department();
+        editDepartment.Name = DepartmentName;
+        editDepartment.Id = CurrentDepartmentName.Id;
+
+        var result = await DepartmentsService.UpdateDepartment(editDepartment);
+
+        if (result.Name != null)
+        {
+            CurrentDepartmentName.Name = editDepartment.Name;
+            await HideModal();
+            await GetDepartments();
+            this.StateHasChanged();
+        }
+        else if (result.Name == null)
+        {
+            ErrorCreateDepartmentMessagetype = "En afdeling med dette navn findes allrede";
+        }
+        else
+        {
+            ErrorCreateDepartmentMessagetype = "Ukendt fejl";
+            CurrentResult = ResultStatus.Error;
+        }
+    }
+
+    private async Task RemoveDepartment(Department CurrentDepartmentName)
+    {
+        var result = await DepartmentsService.DeleteDepartment(CurrentDepartmentName.Id);
+
+
+        await GetDepartments();
+        Department ingendepart = new Department();
+        await ChangeDepartment(ingendepart);
+        InsertInstructorIsDisabled = true;
+        FilterChanged();
+        await HideModal();
+        this.StateHasChanged();
+    }
+
+    private async Task HideModal()
+    {
+        await JSRuntime.InvokeVoidAsync("hideModal");
+        await clearInputAndText();
+    }
+
+    private async Task clearInputAndText()
+    {
+        ErrorInputMessagetype = "";
+        ErrorInputMessagePassword = "";
+        InputUpdatePasswordConfirm = "";
+        InputUpdatePassword = "";
+        ErrorInputMessageInsert = "";
+        InstructorInitials = "";
+        InstructorPassword = "";
+        DepartmentName = "";
+        ErrorCreateDepartmentMessagetype = "";
+    }
+}

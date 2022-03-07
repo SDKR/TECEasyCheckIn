@@ -1,0 +1,37 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>netcoreapp3.1</TargetFramework>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <Compile Remove="Migrations\20200904073206_AddingStudentData.cs" />
+    <Compile Remove="Migrations\20200904073206_AddingStudentData.Designer.cs" />
+    <Compile Remove="Migrations\20200904073759_AddingStudentData.cs" />
+    <Compile Remove="Migrations\20200904073759_AddingStudentData.Designer.cs" />
+    <Compile Remove="Migrations\20200904074204_AddingStudentData.cs" />
+    <Compile Remove="Migrations\20200904074204_AddingStudentData.Designer.cs" />
+    <Compile Remove="Migrations\20200908074626_SeedDataV2.cs" />
+    <Compile Remove="Migrations\20200908074626_SeedDataV2.Designer.cs" />
+    <Compile Remove="Migrations\20200908075242_SeedDataV2.cs" />
+    <Compile Remove="Migrations\20200908075242_SeedDataV2.Designer.cs" />
+    <Compile Remove="Migrations\20200915062155_AddedDepAndInsWithSeedD.cs" />
+    <Compile Remove="Migrations\20200915062155_AddedDepAndInsWithSeedD.Designer.cs" />
+    <Compile Remove="Migrations\20201216081844_initial.cs" />
+    <Compile Remove="Migrations\20201216081844_initial.Designer.cs" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="BCrypt.Net-Next" Version="4.0.0" />
+    <PackageReference Include="Microsoft.EntityFrameworkCore.SqlServer" Version="3.1.6" />
+    <PackageReference Include="Microsoft.EntityFrameworkCore.Tools" Version="3.1.6">
+      <PrivateAssets>all</PrivateAssets>
+      <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
+    </PackageReference>
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Core\Core.csproj" />
+  </ItemGroup>
+
+</Project>

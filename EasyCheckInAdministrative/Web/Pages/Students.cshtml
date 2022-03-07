@@ -1,0 +1,19 @@
+﻿@page
+@using Web.Pages.Shared.Components
+@model Web.Pages.StudentsModel
+@{
+    ViewData["Title"] = "Studerende";
+}
+@section Styles {
+    <link rel="stylesheet" href="~/css/modal.css" />
+    <link rel="stylesheet" href="~/css/backToTop.css" />
+}
+
+@(await Html.RenderComponentAsync<StudentsRC>(RenderMode.ServerPrerendered))
+
+<script src="_framework/blazor.server.js"></script>
+
+@section Scripts {
+    <script src="~/js/modal.js" asp-append-version="true"></script>
+    <script src="~/js/backToTop.js" asp-append-version="true"></script>
+}

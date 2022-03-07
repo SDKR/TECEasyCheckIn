@@ -1,0 +1,17 @@
+﻿@page
+@using Web.Pages.Shared.Components
+@model Web.Pages.CheckInsModel
+@{
+    ViewData["Title"] = "Check Ins";
+}
+@section Styles {
+    <link rel="stylesheet" href="~/css/backToTop.css" />
+}
+
+@(await Html.RenderComponentAsync<CheckInsRC>(RenderMode.ServerPrerendered))
+
+<script src="_framework/blazor.server.js"></script>
+
+@section Scripts {
+    <script src="~/js/backToTop.js" asp-append-version="true"></script>
+}

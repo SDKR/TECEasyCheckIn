@@ -1,0 +1,7 @@
+﻿/* To top Div */
+.toTopDiv {
+    display: none;
+    position: fixed;
+    top: 30%;
+    right: 7%;
+}

@@ -1,0 +1,503 @@
+﻿@using Microsoft.AspNetCore.Components.Web
+@using System.Globalization
+@using Core.Model
+@using Core.Model.Enums
+@using Web.Services
+@using System.Threading;
+@using Microsoft.AspNetCore.Authorization
+@using Microsoft.AspNetCore.Components.Authorization
+@using Microsoft.AspNetCore.Authentication
+@using Microsoft.AspNetCore.Identity;
+@using System.Security.Claims
+@inject CheckInService CheckInService
+@inject InstructorsService InstructorsService
+@inject DepartmentsService DepartmentsService
+@inject AuthenticationStateProvider AuthenticationStateProvider
+
+<section class="container">
+    <!-- SORTERING -->
+    <div id="sortDiv" class="row justify-content-between my-3">
+        <!-- OPDATER DATA -->
+        <div class="col-1 pl-0 align-self-center">
+            <button class="btn btn-outline-primary" @onclick="UpdatePage">
+                Opdater
+            </button>
+        </div>
+        <!-- ELEV NAVNE SORTERING -->
+        <div class="col-4 col-lg-3 p-0 align-self-center filter-btn">
+            <button id="btn-sort" class="btn btn-primary filter-btn" data-toggle="dropdown" aria-expanded="false" aria-controls="sortingSelection">
+                Sortering
+                <span value="Navn asc" class="filter-by">@CurrentSort</span>
+                <i class="fa fa-sort" aria-hidden="true"></i>
+            </button>
+            <div id="sortingSelection" class="dropdown-menu">
+                <label class="dropdown-item filter-item" @onclick="() => ChangeSorting(NameAsc)">
+                    <input value="name_asc" type="radio" name="sorting" checked>
+                    Navn Asc <i class="fa fa-sort-alpha-asc" aria-hidden="true"></i>
+                </label>
+                <label class="dropdown-item filter-item" @onclick="() => ChangeSorting(NameDesc)">
+                    <input value="name_desc" type="radio" name="sorting">
+                    Navn desc <i class="fa fa-sort-alpha-desc" aria-hidden="true"></i>
+                </label>
+                <label class="dropdown-item filter-item" @onclick="() => ChangeSorting(StatusAsc)">
+                    <input value="status_asc" type="radio" name="sorting">
+                    Status asc <i class="fa fa-sort-asc" aria-hidden="true"></i>
+                </label>
+                <label class="dropdown-item filter-item" @onclick="() => ChangeSorting(StatusDesc)">
+                    <input value="status_desc" type="radio" name="sorting">
+                    Status desc <i class="fa fa-sort-desc" aria-hidden="true"></i>
+                </label>
+            </div>
+        </div>
+
+        <!-- ELEV INSTRUKTØR FILTRERING -->
+        <div class="col align-self-center filter-btn">
+            <button class="btn btn-primary filter-btn" data-toggle="dropdown"
+                    aria-expanded="false" aria-controls="instructorSelection">
+                Instruktør
+                <span class="filter-by">@CurrentInstructorFilter?.Initials</span>
+                <i class="fa fa-sort" aria-hidden="true"></i>
+            </button>
+
+            <div id="instructorSelection" class="dropdown-menu">
+                @if (Instructors != null)
+                {
+                    <label class="dropdown-item filter-item" @onclick="() => ChangeInstructorFilter(null)">
+                        Alle
+                    </label>
+                    @foreach (Instructor ins in Instructors)
+                    {
+                        <label class="dropdown-item filter-item" @onclick="() => ChangeInstructorFilter(ins)">
+                            @ins.Initials
+                        </label>
+                    }
+                }
+            </div>
+        </div>
+
+        <!-- ELEV STATUS FILTRERING -->
+        <div class="col-4 col-lg-3 p-0 align-self-center filter-btn">
+            <button id="btn-sort" class="btn btn-primary filter-btn" data-toggle="dropdown" aria-expanded="false">
+                Fremmøde
+                @{ if (CurrentAttendanceFilter != null)
+                    {
+                        <span class="filter-by">@CurrentAttendanceFilter</span>
+
+                    }
+                    else
+                    {
+                        <span class="filter-by">Alle</span>
+
+                    }
+                }
+                <i class="fa fa-sort" aria-hidden="true"></i>
+            </button>
+            <div class="dropdown-menu">
+                <label class="dropdown-item filter-item" @onclick="() => ChangeAttendanceFilter(null)">
+                    Alle
+                </label>
+                @foreach (AttendanceStatus att in Enum.GetValues(typeof(AttendanceStatus)))
+                {
+                    <label class="dropdown-item filter-item" @onclick="() => ChangeAttendanceFilter(att)">
+                        @att
+                    </label>
+                }
+            </div>
+        </div>
+
+
+        <!-- ELEV SØGNING -->
+        <input class="col-3 col-lg-2 p-0 my-2 my-lg-0 align-self-center form-control" type="search" placeholder="Søg på navn..."
+               value="@CurrentSearch" @oninput="ChangeCurrentSearch">
+
+
+    </div>
+</section>
+<hr class="">
+<section class="container">
+    <div class="row justify-content-center">
+
+        <!-- DATO FILTERING -->
+        <div class="col-md-3 col-xl-2">
+            @*<h3>Dato</h3>*@
+            <h3 class="selectedWeekTitle">Uge @CurrentWeek</h3>
+            <input @onchange="(e => WeekChanged((string)e.Value))" class="mb-1" type="date" value="@MondayOfWeek.ToString("yyyy-MM-dd")">
+            @* Will get used for selecting week instead of date *@
+            @*<input @onchange="(e => WeekChanged((string)e.Value))" class="mb-1" type="week" value="" style="width: 100%">*@
+
+            <div id="btnGrpWeekFiltering" class="btn-grp-vertical" role="group">
+                <button @onclick="() => ChangeDateFilter(null)" class="btn btn-primary btnWeekFiltering">
+                    Hele ugen
+                </button>
+                <button @onclick="() => ChangeDateFilter(MondayOfWeek.Date)" class="btn btn-primary btnWeekFiltering">
+                    Mandag | <span>@MondayOfWeek.Date.ToString("dd/MM")</span>
+                </button>
+                <button @onclick="() => ChangeDateFilter(TuesdayOfWeek.Date)" class="btn btn-primary btnWeekFiltering">
+                    Tirsdag | <span>@TuesdayOfWeek.Date.ToString("dd/MM")</span>
+                </button>
+                <button @onclick="() => ChangeDateFilter(WednesdayOfWeek.Date)" class="btn btn-primary btnWeekFiltering">
+                    Onsdag | <span>@WednesdayOfWeek.Date.ToString("dd/MM")</span>
+                </button>
+                <button @onclick="() => ChangeDateFilter(ThursdayOfWeek.Date)" class="btn btn-primary btnWeekFiltering">
+                    Torsdag | <span>@ThursdayOfWeek.Date.ToString("dd/MM")</span>
+                </button>
+                <button @onclick="() => ChangeDateFilter(FridayOfWeek.Date)" class="btn btn-primary btnWeekFiltering">
+                    Fredag | <span>@FridayOfWeek.Date.ToString("dd/MM")</span>
+                </button>
+            </div>
+        </div>
+
+        <!-- TABLE -->
+        <div id="divLoadCheckIns" class="col-md-9 col-xl-10">
+            <!-- CHECK INS FUNDET -->
+            <h2 class="text-center">
+                <span><strong>Check Ins fundet: </strong></span>
+                <span id="studsFound"><i class="fa fa-clock-o" aria-hidden="true"></i> @StudentsFoundCount</span>
+            </h2>
+            @if (StudentsCheckInsList != null)
+            {
+                foreach (var arr in StudentsCheckInsList)
+                {
+                    @if (arr.Count != 0)
+                    {
+                        <h2>@arr[0].Date.ToString("dddd, d. MMMM yyyy", new CultureInfo("da-DK"))</h2>
+                        <table id="checkInTable" class="table bg-light table-bordered">
+                            <thead class="thead-dark">
+                                <tr>
+                                    <th scope="col">Navn</th>
+                                    <th scope="col">Tjek ind</th>
+                                    <th scope="col">Tjek ud</th>
+                                    <th scope="col">Status</th>
+                                    <CascadingAuthenticationState><AuthorizeView Roles="Administrator"><th scope="col">Rediger Status</th></AuthorizeView></CascadingAuthenticationState>
+
+                                </tr>
+                            </thead>
+                            <tbody>
+
+                                @foreach (var checkin in arr)
+                                {
+                                    <tr>
+                                        <td>@checkin.StudentName</td>
+                                        @if (checkin.CheckInTimeStamp != null)
+                                        {
+                                            <td>@checkin.CheckInTimeStamp?.ToString("HH:mm:ss")</td>
+                                        }
+                                        else
+                                        {
+                                            <td>Ikke tjekket ind</td>
+                                        }
+
+                                        @if (checkin.CheckOutTimeStamp != null)
+                                        {
+                                            <td>@checkin.CheckOutTimeStamp?.ToString("HH:mm:ss")</td>
+
+                                        }
+                                        else
+                                        {
+                                            <td>Ikke tjekket ud</td>
+                                        }
+
+                                        @if (checkin.Attendance == Core.Model.Enums.AttendanceStatus.OnTime)
+                                        {
+                                            <td class="bg-success">Til tiden</td>
+                                        }
+                                        else if (checkin.Attendance == Core.Model.Enums.AttendanceStatus.Late)
+                                        {
+                                            <td class="bg-warning">For sent</td>
+                                        }
+                                        else
+                                        {
+                                            <td class="bg-danger">Ikke mødt</td>
+                                        }
+                                        <CascadingAuthenticationState>
+                                            <AuthorizeView Roles="Administrator">
+                                                <td><button class="btn btn-sm btn-primary modalBtn" @onclick="() => ManuelCheckIn(checkin)">Tjek ind</button></td>
+                                            </AuthorizeView>
+                                        </CascadingAuthenticationState>
+                                    </tr>
+                                }
+                            </tbody>
+                        </table>
+                    }
+                }
+            }
+        </div>
+    </div>
+</section>
+
+<div class="toTopDiv text-center">
+    <button onclick="toTop()" type="button" class="btn btn-outline-primary">
+        <i class="fa fa-arrow-up fa-lg" aria-hidden="true"></i>
+    </button>
+    <p class="text-primary">Gå til top</p>
+</div>
+
+@code {
+    /* DATE FILTERING */
+    public int CurrentWeek { get; set; }
+    public DateTime MondayOfWeek { get; set; }
+    public DateTime TuesdayOfWeek { get; set; }
+    public DateTime WednesdayOfWeek { get; set; }
+    public DateTime ThursdayOfWeek { get; set; }
+    public DateTime FridayOfWeek { get; set; }
+    public DateTime[] AllDaysOfWeek { get; set; }
+
+    // Initial students
+    public List<Student> Students { get; set; }
+    // CheckIn list to show
+    public List<List<StudentCheckIn>> StudentsCheckInsList { get; set; }
+
+    public List<Instructor> Instructors { get; set; }
+
+    public int StudentsFoundCount { get; set; }
+
+    /* SORTING & FILTERING */
+    public string CurrentSort { get; set; }
+    public string CurrentFilter { get; set; }
+    public string CurrentSearch { get; set; } = "";
+    public DateTime? CurrentDateFilter { get; set; }
+
+    public Department CurrentDepartmentFilter { get; set; }
+    public Instructor CurrentInstructorFilter { get; set; }
+    // if null show all
+    public AttendanceStatus? CurrentAttendanceFilter { get; set; }
+
+    string NameAsc = "Navn Asc";
+    string NameDesc = "Navn Desc";
+    string StatusAsc = "Status Asc";
+    string StatusDesc = "Status Desc";
+
+
+
+
+    private void ManuelCheckIn(Core.Model.StudentCheckIn student)
+    {
+        if (student.Attendance == AttendanceStatus.NoShow)
+        {
+            var result = CheckInService.ManuelStudenCheckIn(student);
+            UpdatePage();
+        }
+        if (student.Attendance == AttendanceStatus.Late)
+        {
+            foreach (var item in Students)
+            {
+                if (student.StudentName == item.FullName)
+                {
+                    student.StudentId = item.Id;
+                }
+            }
+            student.Attendance = AttendanceStatus.OnTime;
+            var result = CheckInService.ManuelStudenLateTooOnTime(student);
+
+            if (result != null)
+            {
+                // success
+            }
+            else
+            {
+                // Fail
+            }
+        }
+    }
+
+    private void ChangeSorting(string sortBy)
+    {
+        CurrentSort = sortBy;
+        SortBy();
+    }
+
+    private void ChangeDateFilter(DateTime? day)
+    {
+        // if date null, show all days
+        CurrentDateFilter = day;
+        FilterChanged();
+    }
+
+    protected override async Task OnInitializedAsync()
+    {
+        var authState = await AuthenticationStateProvider.GetAuthenticationStateAsync();
+        if (authState.User.Identity.Name != null)
+        {
+            CurrentSort = NameAsc;
+            CurrentAttendanceFilter = null;
+            await SetDepartment();
+            await GetInstructors();
+            CurrentInstructorFilter = Instructors[0];
+            // TODAY
+            await WeekChanged(DateTime.UtcNow.ToShortDateString());
+            // SEED DATA
+            //await WeekChanged(new DateTime(2020, 8, 3).ToShortDateString());
+        }
+    }
+
+    private async Task SetDepartment()
+    {
+        var authState = await AuthenticationStateProvider.GetAuthenticationStateAsync();
+        var userDepartmentID = authState.User.Claims.FirstOrDefault(x => x.Type == "DepartmentID").Value;
+
+        CurrentDepartmentFilter = await DepartmentsService.GetDepartmentAsync(userDepartmentID);
+    }
+
+    private async Task GetInstructors()
+    {
+        Instructors = await InstructorsService.GetAllInstructorsByDepartmentAsync(CurrentDepartmentFilter.Name);
+    }
+
+    private async Task WeekChanged(string date)
+    {
+        DateTime day = DateTime.Parse(date);
+        CurrentWeek = CultureInfo.InvariantCulture.Calendar.GetWeekOfYear(day, CalendarWeekRule.FirstFourDayWeek, DayOfWeek.Monday);
+        MondayOfWeek = ISOWeek.ToDateTime(day.Year, CurrentWeek, DayOfWeek.Monday);
+        TuesdayOfWeek = MondayOfWeek.AddDays(1);
+        WednesdayOfWeek = MondayOfWeek.AddDays(2);
+        ThursdayOfWeek = MondayOfWeek.AddDays(3);
+        FridayOfWeek = MondayOfWeek.AddDays(4);
+
+        AllDaysOfWeek = new DateTime[] { MondayOfWeek, TuesdayOfWeek, WednesdayOfWeek, ThursdayOfWeek, FridayOfWeek };
+        await GetCheckIns(AllDaysOfWeek);
+        ChangeDateFilter(day);
+    }
+
+    private async Task GetCheckIns(DateTime[] dates)
+    {
+        Students = await CheckInService.GetStudentsWithCheckInsForSelectedWeekAsync(CurrentDepartmentFilter.Name, dates);
+        // Temporary way to filter out non soft deleted & active students
+        Students = Students.Where(s => s.IsDeleted == false && s.Status == StudentStatus.Active).ToList();
+
+        // Initialize nested list with empty lists
+        StudentsCheckInsList = new List<List<StudentCheckIn>>(dates.Length);
+        for (int i = 0; i < dates.Length; i++)
+        {
+            StudentsCheckInsList.Add(new List<StudentCheckIn> { });
+        }
+    }
+
+    private async Task UpdatePage()
+    {
+        await GetInstructors();
+        await GetCheckIns(AllDaysOfWeek);
+        FilterChanged();
+    }
+
+    // get students found by current filtering
+    private void StudentsFound()
+    {
+        StudentsFoundCount = 0;
+        for (int i = 0; i < StudentsCheckInsList.Count; i++)
+        {
+            StudentsFoundCount += StudentsCheckInsList[i].Count;
+        }
+    }
+
+    private void FilterChanged()
+    {
+        for (int i = 0; i < AllDaysOfWeek.Length; i++)
+        {
+            if (CurrentAttendanceFilter != null)
+            {
+                if (CurrentInstructorFilter == null)
+                {
+                    StudentsCheckInsList[i] = Students
+                    .SelectMany(student => student.StudentCheckIns.Where(checkIn => checkIn.Date == AllDaysOfWeek[i]),
+                    (student, checkin) => new { student, checkin })
+                    .Where(sc => sc.checkin.Attendance == CurrentAttendanceFilter
+                        && sc.student.FullName.ToLower().Contains(CurrentSearch.ToLower()))
+                    .Select(sc => sc.checkin).ToList();
+                }
+                else
+                    StudentsCheckInsList[i] = Students
+                .SelectMany(student => student.StudentCheckIns.Where(checkIn => checkIn.Date == AllDaysOfWeek[i]),
+                (student, checkin) => new { student, checkin })
+                .Where(sc => sc.student.InstructorId == CurrentInstructorFilter.Id
+                    && sc.checkin.Attendance == CurrentAttendanceFilter
+                    && sc.student.FullName.ToLower().Contains(CurrentSearch.ToLower()))
+                .Select(sc => sc.checkin).ToList();
+            }
+            else
+            {
+                if (CurrentInstructorFilter == null)
+                {
+                    StudentsCheckInsList[i] = Students
+                    .SelectMany(student => student.StudentCheckIns.Where(checkIn => checkIn.Date == AllDaysOfWeek[i]),
+                    (student, checkin) => new { student, checkin })
+                    .Where(sc => sc.student.FullName.ToLower().Contains(CurrentSearch.ToLower()))
+                    .Select(sc => sc.checkin).ToList();
+                }
+                else
+                    StudentsCheckInsList[i] = Students
+                .SelectMany(student => student.StudentCheckIns.Where(checkIn => checkIn.Date == AllDaysOfWeek[i]),
+                (student, checkin) => new { student, checkin })
+                .Where(sc => sc.student.InstructorId == CurrentInstructorFilter.Id
+                    && sc.student.FullName.ToLower().Contains(CurrentSearch.ToLower()))
+                .Select(sc => sc.checkin).ToList();
+            }
+        }
+
+        FilterByDate();
+        SortBy();
+        StudentsFound();
+    }
+
+    private void FilterByDate()
+    {
+        for (int i = 0; i < StudentsCheckInsList.Count; i++)
+        {
+            // if a date filter is selected, filter by that day
+            if (CurrentDateFilter != null)
+                StudentsCheckInsList[i] = StudentsCheckInsList[i].Where(s => s.Date == CurrentDateFilter).ToList();
+            // else show all days of week
+            else
+                StudentsCheckInsList[i] = StudentsCheckInsList[i].ToList();
+        }
+    }
+
+    private void ChangeCurrentSearch(ChangeEventArgs args)
+    {
+        CurrentSearch = args.Value.ToString();
+        FilterChanged();
+    }
+
+    private void SortBy()
+    {
+        switch (CurrentSort)
+        {
+            case "Navn Desc":
+                for (int i = 0; i < StudentsCheckInsList.Count; i++)
+                {
+                    StudentsCheckInsList[i] = StudentsCheckInsList[i].OrderByDescending(s => s.StudentName).ToList();
+                }
+                break;
+            case "Status Asc":
+                for (int i = 0; i < StudentsCheckInsList.Count; i++)
+                {
+                    StudentsCheckInsList[i] = StudentsCheckInsList[i].OrderBy(s => s.Attendance).ToList();
+                }
+                break;
+            case "Status Desc":
+                for (int i = 0; i < StudentsCheckInsList.Count; i++)
+                {
+                    StudentsCheckInsList[i] = StudentsCheckInsList[i].OrderByDescending(s => s.Attendance).ToList();
+                }
+                break;
+            default:
+                for (int i = 0; i < StudentsCheckInsList.Count; i++)
+                {
+                    StudentsCheckInsList[i] = StudentsCheckInsList[i].OrderBy(s => s.StudentName).ToList();
+                }
+                break;
+        }
+    }
+
+    private void ChangeInstructorFilter(Instructor instructor)
+    {
+        CurrentInstructorFilter = instructor;
+        FilterChanged();
+    }
+
+    private void ChangeAttendanceFilter(AttendanceStatus? status)
+    {
+        CurrentAttendanceFilter = status;
+        FilterChanged();
+    }
+}
+

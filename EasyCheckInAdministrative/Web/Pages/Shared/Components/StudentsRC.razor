@@ -1,0 +1,591 @@
+﻿@using Microsoft.AspNetCore.Components.Web
+@using Core.Model
+@using Core.Model.Enums
+@using Web.Services
+@using Web.Model.Enums
+@inject StudentsService StudentsService
+@inject InstructorsService InstructorsService
+@inject DepartmentsService DepartmentsService
+@using Microsoft.JSInterop
+@inject IJSRuntime JSRuntime
+@inject AuthenticationStateProvider AuthenticationStateProvider
+@using Microsoft.AspNetCore.Components.Authorization
+
+
+<section class="container">
+    @if (CurrentResult == ResultStatus.Success)
+    {
+        <div class="bg-success text-center">
+            <h1>Ændringer gemt</h1>
+            <button @onclick="() => CurrentResult = ResultStatus.None">Luk</button>
+        </div>
+    }
+    else if (CurrentResult == ResultStatus.Error)
+    {
+        <div class="bg-danger text-center">
+            <h1>Noget gik galt, prøv igen.</h1>
+            <p>Hvis problemet opstår igen, kontakt udvikler</p>
+            <button @onclick="() => CurrentResult = ResultStatus.None">Luk</button>
+        </div>
+    }
+</section>
+
+<section class="container">
+
+    <!-- FILTRERING -->
+    <div id="sortDiv" class="row justify-content-between my-3">
+        <!-- OPDATER DATA -->
+        <div class="col-1 pl-0 align-self-center">
+            <button class="btn btn-outline-primary" @onclick="UpdatePage">
+                Opdater
+            </button>
+        </div>
+
+        <!-- ELEV INSTRUKTØR FILTERING -->
+        <div class="col-4 col-lg-3 p-0 align-self-center filter-btn">
+            <button class="btn btn-primary filter-btn" data-toggle="dropdown"
+                    aria-expanded="false" aria-controls="instructorSelection">
+                Instruktør
+                @if (CurrentInstructorFilter != null)
+                {
+                    <span class="filter-by">@CurrentInstructorFilter.Initials</span>
+
+                }
+                else
+                {
+                    <span class="filter-by">Alle</span>
+
+                }
+                <i class="fa fa-sort" aria-hidden="true"></i>
+            </button>
+
+            <div id="instructorSelection" class="dropdown-menu">
+                @if (Instructors != null)
+                {
+                    <label class="dropdown-item filter-item" @onclick="() => ChangeInstructorFilter(null)">
+                        Alle
+                    </label>
+                    @foreach (Instructor ins in Instructors)
+                    {
+                        <label class="dropdown-item filter-item" @onclick="() => ChangeInstructorFilter(ins)">
+                            @ins.Initials
+                        </label>
+                    }
+                }
+            </div>
+        </div>
+
+
+        <!-- ELEV STATUS FILTERING -->
+        <div class="col-4 col-lg-3 p-0 align-self-center filter-btn status-filter">
+            <button class="btn btn-primary filter-btn" data-toggle="dropdown" aria-expanded="false">
+                Status
+                @if (CurrentStatusFilter != null)
+                {
+                    <span class="filter-by">@CurrentStatusFilter</span>
+
+                }
+                else
+                {
+                    <span class="filter-by">Alle</span>
+
+                }
+                <i class="fa fa-sort" aria-hidden="true"></i>
+            </button>
+            <div class="dropdown-menu">
+                <label class="dropdown-item filter-item" @onclick="() => ChangeStatusFilter(null)">
+                    Alle
+                </label>
+                @foreach (StudentStatus status in Enum.GetValues(typeof(StudentStatus)))
+                {
+                    <label class="dropdown-item filter-item" @onclick="() => ChangeStatusFilter(status)">
+                        @status
+                    </label>
+                }
+            </div>
+        </div>
+
+        <!-- ELEV SLETTET FILTERING -->
+        <div class="col-4 col-lg-3 p-0 align-self-center filter-btn deleted-filter">
+            <button class="btn btn-primary filter-btn" data-toggle="dropdown" aria-expanded="false">
+                Elev filter
+                <span class="filter-by">@CurrentShowStudentFilter</span>
+                <i class="fa fa-sort" aria-hidden="true"></i>
+            </button>
+            <div class="dropdown-menu">
+                @foreach (ShowStudentFilter val in Enum.GetValues(typeof(ShowStudentFilter)))
+                {
+                    <label class="dropdown-item filter-item" @onclick="() => ChangeShowIsDeletedFilter(val)">
+                        @val
+                    </label>
+                }
+            </div>
+        </div>
+
+        <!-- ELEV SØGNING -->
+        <input class="col-3 col-lg-2 p-0 my-2 my-lg-0 pl-1 align-self-center form-control" type="search" placeholder="Søg på navn..."
+               value="@CurrentSearch" @oninput="ChangeCurrentSearch">
+    </div>
+</section>
+
+<!-- STUDENT LIST -->
+@if (CurrentShowStudentFilter == ShowStudentFilter.Alle || CurrentShowStudentFilter == ShowStudentFilter.Aktiv)
+{
+    <section class="container">
+        <div>
+            <!-- ELEVER FUNDET -->
+            <h2 class="text-center">
+                <span>Aktive elever fundet: </span>
+                <span id="studsFound"><i class="fa fa-user" aria-hidden="true"></i> @StudentsFoundCount</span>
+            </h2>
+        </div>
+        <div class="row">
+            <table id="studentTable" class="table bg-light">
+                <thead class="thead-dark">
+                    <tr>
+                        <th scope="col">Navn</th>
+                        @*<th scope="col">Kort navn</th>*@
+                        @*<th scope="col">Info</th>*@
+                        @*<th scope="col">Afdeling</th>*@
+                        <th scope="col">Instruktør</th>
+                        <th scope="col">Status</th>
+                        <th scope="col">Options</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @if (StudentsList != null)
+                    {
+                        @foreach (var student in StudentsList)
+                        {
+                            <tr>
+                                <td>@student.FullName</td>
+                                @*<td>@student.CardName</td>*@
+                                @*<td>For sent: 0</td>*@
+                                @* Needs to be included in student Repo, change to Department.Name *@
+                                @*<td>@student.Department.Name</td>*@
+                                <td>
+                                    <select @onchange="(args) => student.InstructorId = Guid.Parse(args.Value.ToString())">
+                                        @foreach (Instructor ins in Instructors)
+                                        {
+                                            if (student.InstructorId == ins.Id)
+                                            {
+                                                <option value="@ins.Id" selected>@ins.Initials</option>
+                                            }
+                                            else
+                                            {
+                                                <option value="@ins.Id">@ins.Initials</option>
+                                            }
+                                        }
+                                    </select>
+                                </td>
+                                <td>
+                                    <select @onchange="(args) => student.Status = (StudentStatus)Enum.Parse(typeof(StudentStatus), args.Value.ToString())">
+                                        @foreach (StudentStatus status in Enum.GetValues(typeof(StudentStatus)))
+                                        {
+                                            if (student.Status == status)
+                                            {
+                                                <option selected>@status</option>
+                                            }
+                                            else
+                                            {
+                                                <option>@status</option>
+                                            }
+                                        }
+                                    </select>
+                                </td>
+                                <td>
+                                    <button class="btn btn-sm btn-primary modalBtn"
+                                            @onclick="() => { SelectedStudent = student; CurrentAction = ModalActions.Update; }">
+                                        Gem
+                                    </button>
+                                    <button class="btn btn-sm btn-danger modalBtn"
+                                            @onclick="() => { SelectedStudent = student; CurrentAction = ModalActions.SoftDelete; }">
+                                        Slet
+                                    </button>
+                                </td>
+
+                            </tr>
+                        }
+                    }
+                </tbody>
+            </table>
+        </div>
+    </section>
+}
+@if (CurrentShowStudentFilter == ShowStudentFilter.Alle || CurrentShowStudentFilter == ShowStudentFilter.Slettet)
+{
+    <section class="container">
+        <div>
+            <h2 class="text-center">
+                <span>Slettede elever fundet: </span>
+                <span id="studsDeletedFound" class="text-danger"><i class="fa fa-user" aria-hidden="true"></i> @StudentsDeletedFoundCount</span>
+            </h2>
+        </div>
+        <div class="row">
+            <table id="studentDeletedTable" class="table bg-light">
+                <thead class="bg-danger">
+                    <tr>
+                        <th scope="col">Navn</th>
+                        <th scope="col">Slet dato</th>
+                        <th scope="col">Instruktør</th>
+                        <th scope="col">Status</th>
+                        <th scope="col">Options</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @if (StudentsDeletedList != null)
+                    {
+                        @foreach (var student in StudentsDeletedList)
+                        {
+                            <tr>
+                                <td>@student.FullName</td>
+                                <td>@student.DeletedOn?.ToString("d")</td>
+                                <td>
+                                    <select @onchange="(args) => student.InstructorId = Guid.Parse(args.Value.ToString())">
+                                        @foreach (Instructor ins in Instructors)
+                                        {
+                                            if (student.InstructorId == ins.Id)
+                                            {
+                                                <option value="@ins.Id" selected>@ins.Initials</option>
+                                            }
+                                            else
+                                            {
+                                                <option value="@ins.Id">@ins.Initials</option>
+                                            }
+                                        }
+                                    </select>
+                                </td>
+                                <td>
+                                    <select @onchange="(args) => student.Status = (StudentStatus)Enum.Parse(typeof(StudentStatus), args.Value.ToString())">
+                                        @foreach (StudentStatus status in Enum.GetValues(typeof(StudentStatus)))
+                                        {
+                                            if (student.Status == status)
+                                            {
+                                                <option selected>@status</option>
+                                            }
+                                            else
+                                            {
+                                                <option>@status</option>
+                                            }
+                                        }
+                                    </select>
+                                </td>
+                                <td>
+                                    <button class="btn btn-sm btn-success modalBtn"
+                                            @onclick="() => { SelectedStudent = student; CurrentAction = ModalActions.Activate; }">
+                                        Genaktiver
+                                    </button>
+                                    <button class="btn btn-sm btn-danger modalBtn"
+                                            @onclick="() => { SelectedStudent = student; CurrentAction = ModalActions.Delete; }">
+                                        Fjern
+                                    </button>
+                                </td>
+
+                            </tr>
+                        }
+                    }
+                </tbody>
+            </table>
+        </div>
+    </section>
+}
+
+<div id="modal" class="modal text-center">
+    <form class="modal-content">
+        <div class="container">
+            @switch (CurrentAction)
+            {
+                case ModalActions.Update:
+                    <h1>Opdater elev</h1>
+                    <p>
+                        Er du sikker på du vil gemme ændringerne for <strong>@SelectedStudent?.FullName</strong>?
+                    </p>
+
+                    <div class="clearfix">
+                        <button type="button" class="btn btn-sm btn-primary"
+                                @onclick="() => UpdateStudent(SelectedStudent)">
+                            Gem
+                        </button>
+                        <button type="button" class="btn btn-sm btn-secondary"
+                                @onclick="HideModal">
+                            Annuller
+                        </button>
+                    </div>
+                    break;
+
+                case ModalActions.SoftDelete:
+
+                    <h1>Marker elev som slettet</h1>
+                    <p>
+                        Er du sikker på du vil markere elev <strong>@SelectedStudent?.FullName</strong> som slettet? <br />
+                        @*Alle oplysninger omkring eleven, vil blive fjernet <strong>HELT</strong> fra systemet efter en uge.*@
+                    </p>
+
+                    <div class="clearfix">
+                        <button type="button" class="btn btn-sm btn-danger"
+                                @onclick="() => ChangeIsDeletedState(SelectedStudent)">
+                            Slet
+                        </button>
+                        <button type="button" class="btn btn-sm btn-secondary"
+                                @onclick="HideModal">
+                            Annuller
+                        </button>
+                    </div>
+                    break;
+
+                case ModalActions.Activate:
+
+                    <h1>Genaktiver elev</h1>
+                    <p>
+                        Er du sikker på du vil genaktivere elev <strong>@SelectedStudent?.FullName</strong>? <br />
+                    </p>
+
+                    <div class="clearfix">
+                        <button type="button" class="btn btn-sm btn-success"
+                                @onclick="() => ChangeIsDeletedState(SelectedStudent)">
+                            Genaktiver
+                        </button>
+                        <button type="button" class="btn btn-sm btn-secondary"
+                                @onclick="HideModal">
+                            Annuller
+                        </button>
+                    </div>
+                    break;
+
+                case ModalActions.Delete:
+
+                    <h1 class="text-danger">Fjern elev fra system</h1>
+                    <p>
+                        Er du sikker på du vil fjerne elev <strong>@SelectedStudent?.FullName</strong> fra system? <br />
+                        Alle oplysninger omkring eleven, vil blive fjernet <strong>HELT</strong> fra system.<br />
+                        <span class="text-danger"><strong>Denne handling kan ikke fortrydes!</strong></span>
+                    </p>
+
+                    <div class="clearfix">
+                        <button type="button" class="btn btn-sm btn-danger"
+                                @onclick="() => DeleteStudent(SelectedStudent)">
+                            Slet
+                        </button>
+                        <button type="button" class="btn btn-sm btn-secondary"
+                                @onclick="HideModal">
+                            Annuller
+                        </button>
+                    </div>
+                    break;
+            }
+        </div>
+    </form>
+</div>
+
+<div class="toTopDiv text-center">
+    <button onclick="toTop()" type="button" class="btn btn-outline-primary">
+        <i class="fa fa-arrow-up fa-lg" aria-hidden="true"></i>
+    </button>
+    <p class="text-primary">Gå til top</p>
+</div>
+
+@code {
+    public int StudentsFoundCount { get; set; }
+    public int StudentsDeletedFoundCount { get; set; }
+
+    // SORTING & FILTERING
+    public Department CurrentDepartmentFilter { get; set; }
+    // if null show all
+    public Instructor CurrentInstructorFilter { get; set; }
+    public StudentStatus? CurrentStatusFilter { get; set; }
+    public ShowStudentFilter CurrentShowStudentFilter { get; set; }
+    public string CurrentSearch { get; set; } = "";
+
+    // Used to decide result message
+    public ResultStatus CurrentResult { get; set; }
+    // Used to decide what the modal should show
+    public ModalActions CurrentAction { get; set; }
+
+    public List<Student> Students { get; set; }
+    public List<Student> StudentsList { get; set; }
+    public List<Student> StudentsDeletedList { get; set; }
+    public List<Instructor> Instructors { get; set; }
+
+    public Student SelectedStudent { get; set; }
+
+    protected override async Task OnInitializedAsync()
+    {
+        var authState = await AuthenticationStateProvider.GetAuthenticationStateAsync();
+        if (authState.User.Identity.Name != null)
+        {
+            await SetDepartment();
+            await GetInstructors();
+            CurrentInstructorFilter = null;
+            CurrentStatusFilter = null;
+            CurrentShowStudentFilter = ShowStudentFilter.Alle;
+            await GetStudents();
+            FilterChanged();
+        }
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!firstRender)
+        {
+            await JSRuntime.InvokeVoidAsync("loadModal");
+        }
+    }
+
+    private async Task GetStudents()
+    {
+        Students = await StudentsService.GetAllStudentsByDepartmentAsync(CurrentDepartmentFilter.Name);
+        StudentsFoundCount = Students.Count;
+    }
+
+    private async Task SetDepartment()
+    {
+        var authState = await AuthenticationStateProvider.GetAuthenticationStateAsync();
+        var userDepartmentID = authState.User.Claims.FirstOrDefault(x => x.Type == "DepartmentID").Value;
+
+        CurrentDepartmentFilter = await DepartmentsService.GetDepartmentAsync(userDepartmentID);
+    }
+
+    private async Task GetInstructors()
+    {
+        Instructors = await InstructorsService.GetAllInstructorsByDepartmentAsync(CurrentDepartmentFilter.Name);
+    }
+
+    private async Task UpdatePage()
+    {
+        await GetInstructors();
+        await GetStudents();
+        FilterChanged();
+    }
+
+    private void ChangeInstructorFilter(Instructor instructor)
+    {
+        CurrentInstructorFilter = instructor;
+        FilterChanged();
+    }
+
+    private void ChangeStatusFilter(StudentStatus? status)
+    {
+        CurrentStatusFilter = status;
+        FilterChanged();
+    }
+
+    private void ChangeShowIsDeletedFilter(ShowStudentFilter val)
+    {
+        CurrentShowStudentFilter = val;
+    }
+
+    private void FilterChanged()
+    {
+        if (CurrentStatusFilter != null && CurrentInstructorFilter != null)
+        {
+            StudentsList = Students.Where(s => s.DepartmentId == CurrentDepartmentFilter.Id
+                                   && s.InstructorId == CurrentInstructorFilter.Id
+                                   && s.Status == CurrentStatusFilter
+                                   && s.FullName.ToLower().Contains(CurrentSearch.ToLower()))
+                                    .OrderBy(s => s.FullName).ToList();
+        }
+        else if (CurrentInstructorFilter != null)
+        {
+            StudentsList = Students.Where(s => s.DepartmentId == CurrentDepartmentFilter.Id
+                                   && s.InstructorId == CurrentInstructorFilter.Id
+                                   && s.FullName.ToLower().Contains(CurrentSearch.ToLower()))
+                                    .OrderBy(s => s.FullName).ToList();
+        }
+        else if (CurrentStatusFilter != null)
+        {
+            StudentsList = Students.Where(s => s.DepartmentId == CurrentDepartmentFilter.Id
+                                   && s.Status == CurrentStatusFilter
+                                   && s.FullName.ToLower().Contains(CurrentSearch.ToLower()))
+                                    .OrderBy(s => s.FullName).ToList();
+        }
+        else
+        {
+            StudentsList = Students.Where(s => s.DepartmentId == CurrentDepartmentFilter.Id
+                                   && s.FullName.ToLower().Contains(CurrentSearch.ToLower()))
+                                    .OrderBy(s => s.FullName).ToList();
+        }
+        // temporary way to filter out soft deleted students
+        StudentsDeletedList = StudentsList.Where(s => s.IsDeleted == true).ToList();
+        StudentsList = StudentsList.Where(s => s.IsDeleted == false).ToList();
+
+        StudentsFound();
+    }
+
+    private void ChangeCurrentSearch(ChangeEventArgs args)
+    {
+        CurrentSearch = args.Value.ToString();
+        FilterChanged();
+    }
+
+    private void StudentsFound()
+    {
+        StudentsFoundCount = StudentsList.Count;
+        StudentsDeletedFoundCount = StudentsDeletedList.Count;
+    }
+
+    private async Task UpdateStudent(Student student)
+    {
+        await HideModal();
+        var result = await StudentsService.UpdateStudent(student);
+        if (result != null)
+        {
+            var index = Students.IndexOf(student);
+            if (index != -1)
+                Students[index] = result;
+            FilterChanged();
+            CurrentResult = ResultStatus.Success;
+        }
+        else
+        {
+            CurrentResult = ResultStatus.Error;
+        }
+    }
+
+    private async Task ChangeIsDeletedState(Student student)
+    {
+        await HideModal();
+        // TEMPORARY IMPLEMENTATION, SHOULD BE DONE ON API
+        // switches deleted property and set deletedOn if isDeleted, else remove deleteOn
+        student.IsDeleted = !student.IsDeleted;
+        if (student.IsDeleted)
+            student.DeletedOn = DateTime.Now;
+        else
+            student.DeletedOn = null;
+
+        var result = await StudentsService.UpdateStudent(student);
+        if (result != null)
+        {
+            var index = Students.IndexOf(student);
+            if (index != -1)
+                Students[index] = result;
+            FilterChanged();
+            CurrentResult = ResultStatus.Success;
+        }
+        else
+        {
+            CurrentResult = ResultStatus.Error;
+        }
+    }
+
+    private async Task DeleteStudent(Student student)
+    {
+        await HideModal();
+        var result = await StudentsService.DeleteStudent(student);
+        if (result != null)
+        {
+            Students.Remove(student);
+            FilterChanged();
+            CurrentResult = ResultStatus.Success;
+        }
+        else
+        {
+            CurrentResult = ResultStatus.Error;
+        }
+    }
+
+    private async Task HideModal()
+    {
+        SelectedStudent = null;
+        await JSRuntime.InvokeVoidAsync("hideModal");
+    }
+}
